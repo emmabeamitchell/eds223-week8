@@ -1,0 +1,109 @@
+---
+title: "week8-section"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(sf)
+library(terra)
+library(dismo)
+library(tmap)
+```
+
+```{r}
+magpie <- read_csv(here::here("data", "data", "magpie_obvs.csv"))
+tule_elk <- read_csv(here::here("data", "data", "tule_elk_obvs.csv"))
+
+bioclim_dir <- here::here("data", "data", "climate", "wc2.1_2.5m")
+bioclim <- list.files(bioclim_dir, pattern = glob2rx("*.tif$"), full.names = TRUE)
+bioclim_rast <- rast(bioclim)
+```
+
+Update the bioclim_rast layer names to match the Bioclimatic variables using names()
+
+```{r}
+names(bioclim_rast) <- c("annualMeanTemp", "meanDiurnalRange", "isothermality", "tempSeasonality", "maxTempWarmMonth", "maxTempColdMonth", "tempAnnualRange", "meanTempWetQ", "meanTempDryQ", "meanTempWarmQ", "meanTempColdQ", "annualPrecip", "precipWetMonth", "precipDryMonth", "precipSeasonality", "precipWetQ", "precipDryQ", "precipWarmQ", "precipColdQ")
+
+```
+
+Use st_as_sf to convert and find the geographic extent of species occurrence data magpie using st_bbox()
+
+```{r}
+magpie_sf <- magpie %>%
+  rename(long = longitude,
+         lat = latitude) %>%
+  drop_na(long, lat) %>%
+  st_as_sf(coords = c("long", "lat"), crs = 4326)
+
+
+```
+
+Crop bioclim_rast to match the extent of species occurrence data magpie
+
+```{r}
+bioclim_crop <- crop(bioclim_rast, magpie_sf)
+
+```
+
+Extract points from the cropped bioclim_rast for each occurrence in magpie
+
+```{r}
+bioclim_mask <- mask(bioclim_crop, magpie_sf) 
+```
+
+```{r}
+plot(bioclim_crop$annualMeanTemp)
+plot(bioclim_mask$annualMeanTemp)
+```
+
+```{r}
+# Extract points from raster for all species occurrences
+bioClim_pts <- as_tibble(extract(bioclim_crop, magpie_sf))
+```
+
+Create “background values” by using dismo::randomPoints() to generate random sample points from the cropped bioclim_rast
+
+```{r}
+set.seed(42) # for reproducibility
+# Generate random sample points from raster
+random_pts <- dismo::randomPoints(mask = raster(bioclim_crop[["annualMeanTemp"]]),
+                                  n = nrow(magpie) * 2,
+                                  ext = magpie_sf)
+
+```
+
+Extract points from bioclim_rast for each random sample point generated in Step #5
+
+```{r}
+# Extract points from raster for random sample points
+bioClim_random_pts <- as_tibble(extract(bioclim_crop, random_pts))
+```
+
+Plot species climate niche and background climate (temperature vs. precipitation)
+
+```{r}
+map_1 <- tm_shape(raster(bioclim_crop[["annualPrecip"]])) +
+  tm_raster(palette = "Blues", title = "Annual Precipitation") +
+  tm_shape(magpie_sf) +
+  tm_dots(col = "#3a5a40", size = 0.15) +
+  tm_layout(legend.position = c("left", "bottom"),
+            legend.bg.color = "white")
+
+map_2 <- tm_shape(raster(bioclim_crop[["annualMeanTemp"]])) +
+  tm_raster(palette = "-RdYlBu", title = "Annual Mean Temp") +
+  tm_shape(magpie_sf) +
+  tm_dots(col = "#3a5a40", size = 0.15) +
+  tm_layout(legend.position = c("left", "bottom"),
+            legend.bg.color = "white")
+
+tmap_arrange(map_1, map_2)
+```
+
+
+```{r}
+
+```
+
